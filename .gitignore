@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+
+# 打包离线版时下载的 three.js，600KB，不进仓库 ——
+# tools/build-offline.js 会自动下，CI 里也是现下的
+tools/three.min.js
+
+# build-offline.js 的产物，用 `node tools/build-offline.js` 现生成
+birthday-cake-offline.html

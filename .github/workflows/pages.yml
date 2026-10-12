@@ -35,10 +35,21 @@ jobs:
         with:
           enablement: true
 
-      - name: 把生日蛋糕页面摆成站点根目录
+      # 发的是**离线版**，不是原来那个 HTML。
+      # 原版要从 cdnjs 取 three.js、从 Google Fonts 取字体，这两个域名在
+      # 中国大陆打不开 —— 字体挂了只是字变样，three.js 挂了整个画面都不出来。
+      # 离线版把 three.js 内联进去，页面本身不请求任何外部资源，
+      # 所以只要 github.io 能开，画面就能出来。
+      - name: 下载 three.js 并打包离线版
+        run: |
+          curl -sL -o tools/three.min.js \
+            https://cdnjs.cloudflare.com/ajax/libs/three.js/0.147.0/three.min.js
+          node tools/build-offline.js
+
+      - name: 摆成站点根目录
         run: |
           mkdir -p _site
-          cp birthday-cake.html _site/index.html
+          cp birthday-cake-offline.html _site/index.html
           ls -l _site
 
       - uses: actions/upload-pages-artifact@v3
