@@ -1,0 +1,49 @@
+name: Deploy to GitHub Pages
+
+# 这个工作流干两件事：
+#   1. configure-pages 带 enablement: true —— 仓库从没开过 Pages，这个开关
+#      就是替你去 Settings 里点那一下；
+#   2. 把单文件页面摆成站点根目录的 index.html 再发布。
+#      这样链接是 https://yuhui200.github.io/birthday_cake/ ，
+#      不用带一长串文件名，发出去好看。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement: true —— Pages 没开过也一并开掉
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: 把生日蛋糕页面摆成站点根目录
+        run: |
+          mkdir -p _site
+          cp birthday-cake.html _site/index.html
+          ls -l _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
