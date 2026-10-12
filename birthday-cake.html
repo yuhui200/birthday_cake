@@ -123,7 +123,7 @@ body{
     <span class="bar"></span>
     <span class="keys" id="keys">拖动旋转 · 滚轮缩放</span>
   </div>
-  <canvas id="greet" aria-label="Happy Birthday"></canvas>
+  <canvas id="greet" aria-label="Happy Birthday，祝宋登燎23岁生日快乐！！！"></canvas>
   <div id="veil"><span class="dot"></span><span class="msg">正在堆 216,760 颗粒子…</span></div>
   <div id="fallback">这台设备的浏览器没有可用的 WebGL，<br>画面渲染不出来。</div>
 </div>
@@ -1254,10 +1254,27 @@ const GREET_GLOW_RGB = [ 90, 130, 220];    // TEXT_GLOW_RGB
 const GREET_WEIGHT   = 700;
 const GREET_FAMILY   = '"Arial Narrow", "Liberation Sans Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif';
 
-// size 是 CSS 像素。位图按 size * s 画（s = 设备像素比），和 WebGL 那边
-// 场景按设备像素渲染是一套口径 —— 否则 dpr=2 的手机上，整个画面是清晰的，
-// 唯独正中间的问候语是糊的。s = 1 时下面每个数字都回到原程序的绝对值。
-function buildGreet(size, s){
+// 下面是给具体的人写的那行，和上面这句通用祝福不是一个性质：
+// 上面那句要对齐参考图，这行是后加的，字号按看着舒服定 ——
+// 12 个全角字加两个数字，取 0.42 倍时整行略窄于上面那句，读起来像个金字塔。
+// 想换人/换岁数改这一行就行，其余（字号下限、不发光）都会自动跟着走。
+const GREET_SUB        = '祝宋登燎23岁生日快乐！！！';
+const GREET_SUB_RATIO  = 0.42;   // 相对 GREET_SIZE
+const GREET_SUB_GAP    = 0.34;   // 两行之间空多少，同样按 GREET_SIZE 的比例
+const GREET_SUB_WEIGHT = 700;
+// 汉字有可读性下限，拉丁字母没有：上面那行缩到 19px 还认得出来，
+// 这行跟着等比缩到 8px 就没了 —— 而链接主要就是手机点开的。
+// 所以这行先按比例算，再抬到不小于这个绝对字号（屏幕实在窄就按宽度让路）。
+const GREET_SUB_MIN_PX = 20;
+// 中文不能用上面那串窄体回退链 —— Arial Narrow 和 Roboto Condensed 都没有汉字，
+// 浏览器会自己找个默认字体顶上，字重和字面都不可控。这里明写各平台的黑体。
+const GREET_SUB_FAMILY = '"Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", sans-serif';
+
+// 主行：原程序 build_text_surface 的逐句翻译，一个字没动。
+// size 是 CSS 像素，位图按 size * s 画（s = 设备像素比），和 WebGL 那边场景按
+// 设备像素渲染是一套口径 —— 否则 dpr=2 的手机上整个画面是清晰的，唯独正中间的
+// 问候语是糊的。s = 1 时下面每个数字都回到原程序的绝对值。
+function buildGreetGlow(size, s){
   const px = size * s;
   const pad = Math.round(Math.max(8, Math.floor(size / 3)) * s);   // max(8, size//3)
   const font = GREET_WEIGHT + ' ' + px + 'px ' + GREET_FAMILY;
@@ -1306,6 +1323,53 @@ function buildGreet(size, s){
   return cv;   // 位图尺寸 = CSS 尺寸 * s
 }
 
+// 中文那行**不发光**，就是实心的字。
+// 试过跟主行一样走辉光管线，效果不好：汉字笔画密、字面又填满整个字身框，
+// 一圈辉光会把笔画之间的空隙填死，整行糊成一条，字反而认不出来。实心最清楚。
+// 留一点点边距只是别切掉抗锯齿的那半个像素，不是给辉光留的。
+function buildGreetSolid(text, size, weight, family, s){
+  const px = size * s;
+  const pad = Math.max(1, Math.round(px * 0.06));
+  const font = weight + ' ' + px + 'px ' + family;
+
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = font;
+  const m = probe.measureText(text);
+  const asc  = Math.ceil(m.fontBoundingBoxAscent  || m.actualBoundingBoxAscent  || px * 0.90);
+  const desc = Math.ceil(m.fontBoundingBoxDescent || m.actualBoundingBoxDescent || px * 0.25);
+
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(m.width) + pad * 2;
+  cv.height = asc + desc + pad * 2;
+  const g = cv.getContext('2d');
+  g.font = font;
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = 'rgb(' + GREET_CORE_RGB.join(',') + ')';
+  g.fillText(text, pad, pad + asc);
+  return cv;
+}
+
+// 两行各画各的，最后拼成一张。为什么不是共用一个 canvas：辉光必须在模糊那一步
+// 之前就决定，一旦两行进了同一张位图，第 ② 步的模糊就没法只跳过其中一行。
+// 主行走完整的辉光管线，中文行直接贴上去，互不干扰。
+function buildGreet(size, subSize, s){
+  const main = buildGreetGlow(size, s);
+  if (!GREET_SUB) return main;
+
+  const sub = buildGreetSolid(GREET_SUB, subSize, GREET_SUB_WEIGHT, GREET_SUB_FAMILY, s);
+  const gap = Math.round(size * GREET_SUB_GAP * s);
+
+  const W = Math.max(main.width, sub.width);
+  const H = main.height + gap + sub.height;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  // 两行各自水平居中：窄的那行不能被顶到左边
+  g.drawImage(main, Math.round((W - main.width) / 2), 0);
+  g.drawImage(sub,  Math.round((W - sub.width)  / 2), main.height + gap);
+  return cv;   // 位图尺寸 = CSS 尺寸 * s
+}
+
 function fitText(){
   const el = document.getElementById('greet');
   if (!el) return;
@@ -1316,9 +1380,16 @@ function fitText(){
   // 于是字号正好 64、距底正好 42 —— 和参考图逐像素对齐。
   const k = Math.min(cssW / WIN_W, cssH / WIN_H, 1) * (CAM_DIST_START / baseDist);
   const size = Math.max(18, Math.round(GREET_SIZE * k));
+  // 中文那行先按比例算，再抬到 GREET_SUB_MIN_PX；但如果屏幕窄到一行放不下，
+  // 就以宽度为准让步（宁可小一点，也别让整块触发下面的收窄、被等比缩回去）。
+  const subFit  = Math.floor(cssW * 0.86 / GREET_SUB.length);
+  const subSize = Math.min(
+    Math.max(Math.round(size * GREET_SUB_RATIO), GREET_SUB_MIN_PX),
+    Math.max(12, subFit)
+  );
   const s = Math.max(1, dpr);
 
-  const src = buildGreet(size, s);
+  const src = buildGreet(size, subSize, s);
   const cw = src.width / s, ch = src.height / s;    // CSS 尺寸
 
   if (el.width !== src.width || el.height !== src.height){
